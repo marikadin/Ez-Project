@@ -86,7 +86,7 @@ def process_and_plot_data(directory):
         plt.figure(figsize=(10, 6))
         plt.plot(hours, averages, marker='o', linestyle='-', color='b')
         plt.title('Average PG values over time')
-        plt.xlabel('Time[UT]')
+        plt.xlabel('Time[LT]')
         plt.ylabel('Average PG[V/m]')
         plt.xticks(hours)  # Ensure all hours are labeled on the x-axis
         plt.grid(True)
