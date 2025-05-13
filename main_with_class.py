@@ -10,7 +10,7 @@ class Graphs_24():
         self.usecols = []
         self.file = ""
         self.columns_names = []
-        self.averages ={}
+        self.averages = {}
 
     def organizeList_24hours(self, df, dicti, field):
         for idx, row in df.iterrows():
@@ -26,7 +26,7 @@ class Graphs_24():
         for i in range(24):
             for j in dicti[field][i]:
                 sum += j
-            listi[i] = sum / len(dicti[field][i])
+            listi[i] = sum / len(dicti[field][i]) if len(dicti[field][i]) > 0 else 0
             sum = 0
 
     def plot(self):
@@ -36,7 +36,6 @@ class Graphs_24():
         df.columns = self.columns_names
 
         # Print first few rows to debug and check the 'Date' column
-
         df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
         dicti = {}
         for i in df.columns[1:]:
@@ -49,6 +48,13 @@ class Graphs_24():
 
         for i in dicti.keys():
             self.average_per_hours(dicti, self.averages[i], i)
+
+        # Print the 24-hour averages to the terminal
+        print("24-Hour Averages:")
+        for pollutant in dicti.keys():
+            print(f"\n{pollutant}:")
+            for hour in range(24):
+                print(f"Hour {hour}: {self.averages[pollutant][hour]:.2f}")
 
         cmap = cm.get_cmap('tab10')
 
@@ -65,6 +71,7 @@ class Graphs_24():
         plt.grid(True)
         plt.tight_layout()
         plt.show()
+
 
 class Graphs_weeks:
 
