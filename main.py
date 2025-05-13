@@ -1,82 +1,139 @@
-import pandas as pd
+import os
+import csv
 import matplotlib.pyplot as plt
-import math
+from datetime import datetime
+from collections import defaultdict
+import pandas as pd
+import matplotlib.cm as cm
 
+# ==== CONFIGURATION ====
+directory_path = "Ez Holon"
+excel_file = "data.xlsx"
+usecols = [0, 3, 4]
+column_names = ['Date', 'NOx', 'PM2.5']
+dates_to_skip = {
+    "03/11/2024", "04/11/2024", "05/11/2024", "17/11/2024", "18/11/2024",
+    "19/11/2024", "20/11/2024", "23/11/2024", "24/11/2024", "25/11/2024",
+    "26/11/2024", "27/11/2024", "28/11/2024", "29/11/2024", "19/12/2024",
+    "20/12/2024", "21/12/2024", "22/12/2024", "23/12/2024", "24/12/2024",
+    "25/12/2024", "26/12/2024", "27/12/2024", "28/12/2024", "29/12/2024",
+    "30/12/2024", "31/12/2024", "10/01/2025", "11/01/2025", "12/01/2025",
+    "22/01/2025", "23/01/2025", "24/01/2025", "04/02/2025", "05/02/2025",
+    "06/02/2025", "08/02/2025", "09/02/2025", "10/02/2025", "11/02/2025",
+    "19/02/2025", "20/02/2025", "22/02/2025", "23/02/2025", "28/02/2025",
+    "01/03/2025"
+}
 
-def organizeList_24hours(data, dicti, field):
-    index = 0
-    for i, value in enumerate(data):
-        # Check if the value is a valid number (not NaN)
-        if isinstance(value, (int, float)) and not math.isnan(value):
-            dicti[field][index].append(value)
+days_order = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
-        # Update index every 13 values, reset after 23
-        if i % 13 != 0:
-            pass  # Continue the loop
-        else:
-            index += 1  # Move to the next hour (index)
+# ==== PG DATA ====
+def process_pg_data(directory):
+    daily_data = defaultdict(lambda: {hour: [] for hour in range(24)})
+    for filename in os.listdir(directory):
+        if filename.endswith(".dat"):
+            with open(os.path.join(directory, filename), 'r') as file:
+                reader = csv.reader(file)
+                for row in reader:
+                    try:
+                        timestamp = row[0]
+                        e_field_avg = float(row[2])
+                        timestamp_obj = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
+                        formatted_date = timestamp_obj.strftime('%d/%m/%Y')
+                        if formatted_date in dates_to_skip:
+                            continue
+                        day_name = timestamp_obj.strftime('%A')
+                        hour = timestamp_obj.hour
+                        e_field_avg_abs = abs(e_field_avg)
+                        daily_data[day_name][hour].append(e_field_avg_abs)
+                    except:
+                        continue
+    # Flatten into 168 hour values
+    pg_data = []
+    for day in days_order:
+        for hour in range(24):
+            values = daily_data[day][hour]
+            avg = sum(values) / len(values) if values else 0
+            pg_data.append(avg)
+    return pg_data
 
-        # Ensure the index wraps around after 23 hours (24-hour cycle)
-        if index == 24:
-            index = 0
-    return dicti
+# ==== EXCEL POLLUTANT DATA ====
+def process_pollutant_data(file, usecols, colnames):
+    df = pd.read_excel(file, engine='openpyxl', usecols=usecols, skiprows=4)
+    df.columns = colnames
+    df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
 
+    pollutants = df.columns[1:]
+    avg_results = {}
 
-def average_per_hours(dicti, listi, field):
-    sum = 0
-    for i in range(24):
-        for j in dicti[field][i]:
-            sum += j
-        listi[i] = sum / len(dicti[field][i])
-        sum=0
+    for pollutant in pollutants:
+        df[pollutant] = pd.to_numeric(df[pollutant], errors='coerce')
+        hourly_dict = {day: [[] for _ in range(24)] for day in days_order}
+        for idx, row in df.iterrows():
+            date = row['Date']
+            value = row[pollutant]
+            if pd.notna(date) and pd.notna(value):
+                day_name = date.day_name()
+                hour = date.hour
+                if day_name in hourly_dict and 0 <= hour < 24:
+                    hourly_dict[day_name][hour].append(value)
+        # Compute averages
+        flat_data = []
+        for day in days_order:
+            for hour in range(24):
+                vals = hourly_dict[day][hour]
+                avg = sum(vals) / len(vals) if vals else 0
+                flat_data.append(avg)
+        avg_results[pollutant] = flat_data
+    return avg_results
 
+# ==== MAIN COMBINED PLOT ====
+def plot_combined():
+    pg_week = process_pg_data(directory_path)
+    pollutant_data = process_pollutant_data(excel_file, usecols, column_names)
 
-# Read the Excel file, skip the first three rows, and use only columns A, D, and E
-df = pd.read_excel('data.xlsx', engine='openpyxl', usecols=[0, 3, 4], skiprows=4)
+    x = list(range(168))
+    fig, ax1 = plt.subplots(figsize=(14, 6))
 
-# Rename columns to appropriate headers
-df.columns = ['Date', 'NOx', 'PM2.5']
+    # PG - Left Axis
+    ln1 = ax1.plot(x, pg_week, color='black', label='PG [V/m]', linewidth=2)
+    ax1.set_ylabel('PG [V/m]', color='black')
+    ax1.tick_params(axis='y', labelcolor='black')
 
-# Print first few rows to debug and check the 'Date' column
-# Convert 'Date' column to datetime, ensuring invalid data is coerced to NaT
-df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
+    # NOx - Right Axis
+    ax2 = ax1.twinx()
+    ln2 = ax2.plot(x, pollutant_data['NOx'], color='red', label='NOx [µg/m³]', linewidth=2)
+    ax2.set_ylabel('NOx [µg/m³]', color='red')
+    ax2.tick_params(axis='y', labelcolor='red')
 
-# Convert the 'NOx' and 'PM2.5' columns to numeric, invalid entries will become NaN
-df['NOx'] = pd.to_numeric(df['NOx'], errors='coerce')
-df['PM2.5'] = pd.to_numeric(df['PM2.5'], errors='coerce')
+    # PM2.5 - Third Axis
+    ax3 = ax1.twinx()
+    ax3.spines['right'].set_position(('outward', 60))  # Shift to the right
+    ln3 = ax3.plot(x, pollutant_data['PM2.5'], color='blue', label='PM2.5 [µg/m³]', linewidth=2)
+    ax3.set_ylabel('PM2.5 [µg/m³]', color='blue')
+    ax3.tick_params(axis='y', labelcolor='blue')
 
-# Convert the columns to lists
-NOx = df['NOx'].values.tolist()
-PM = df['PM2.5'].values.tolist()
+    # X-axis settings
+    ax1.set_xticks([i * 24 + 12 for i in range(7)])
+    ax1.set_xticklabels(days_order)
+    ax1.set_xlabel("Day of the Week")
+    ax1.set_title("Weekly Comparison of PG, NOx, and PM2.5")
+    ax1.grid(True)
 
-# Initialize the dictionary with empty lists for each hour
-dicti = {"NOx": [[] for _ in range(24)], "PM2.5": [[] for _ in range(24)]}
+    # Extra X-axis: Hour ranges
+    # Extra X-axis: Hour of the Week (0–167)
+    ax_top = ax1.twiny()
+    ax_top.set_xlim(ax1.get_xlim())  # Align with actual plot
+    tick_positions = list(range(0, 169, 6))  # Includes 168
+    ax_top.set_xticks(tick_positions)
+    ax_top.set_xticklabels([str(i) for i in tick_positions])
+    ax_top.set_xlabel("Hour of the Week [0–167]")
 
-# Organize the data into hourly lists for NOx and PM2.5
-organizeList_24hours(PM, dicti, 'PM2.5')
-organizeList_24hours(NOx, dicti, 'NOx')
+    # Combined legend
+    lines = ln1 + ln2 + ln3
+    labels = [l.get_label() for l in lines]
+    ax1.legend(lines, labels, loc='upper left')
 
-# Initialize lists to store the hourly averages
-finale_NOx = [None for _ in range(24)]
-finale_PM = [None for _ in range(24)]
+    plt.tight_layout()
+    plt.show()
 
-# Calculate the average per hour for both NOx and PM2.5
-average_per_hours(dicti, finale_PM, "PM2.5")
-average_per_hours(dicti, finale_NOx, "NOx")
-
-# Print the results
-print("Hourly averages for NOx:", finale_NOx)
-print("Hourly averages for PM2.5:", finale_PM)
-
-# Plotting the results for visualization
-plt.figure(figsize=(10, 6))
-plt.plot(range(24), finale_NOx, label='NOx', marker='o', linestyle='-', color='red')
-plt.plot(range(24), finale_PM, label='PM2.5', marker='o', linestyle='-', color='blue')
-plt.title('Hourly Averages of NOx and PM2.5')
-plt.xlabel('Hour of the Day')
-plt.ylabel('Average Value')
-plt.xticks(range(24))  # Set x-axis labels as hours
-plt.legend()
-plt.grid(True)
-plt.tight_layout()
-plt.show()
+plot_combined()

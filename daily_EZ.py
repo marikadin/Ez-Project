@@ -1,10 +1,9 @@
 import os
 import csv
 import matplotlib.pyplot as plt
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import defaultdict
 
-# Define the path to the directory
 directory_path = "Ez Holon"
 
 dates_to_skip = {
@@ -21,83 +20,71 @@ dates_to_skip = {
 }
 
 def process_and_plot_data(directory):
-    # Dictionary to hold the sum of absolute E-field values and the count for each hour, grouped by day
-    daily_data = defaultdict(lambda: {hour: [] for hour in range(24)})  # Structure: {day: {hour: [values]}}
-    i = 0  # To count the number of valid files processed
+    daily_data = defaultdict(lambda: {hour: [] for hour in range(24)})
+    i = 0
 
-    # Loop through all files in the directory
     for filename in os.listdir(directory):
         if filename.endswith(".dat"):
             file_path = os.path.join(directory, filename)
-
-            # Open and read the file
             with open(file_path, 'r') as file:
                 reader = csv.reader(file)
-
-                # Process each row in the file
                 for row in reader:
                     try:
-                        timestamp = row[0]  # Assuming timestamp is the first column
-                        e_field_avg = float(row[2])  # Assuming E_field_Avg is the third column
-
-                        # Convert timestamp string to a datetime object
-                        timestamp_obj = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')  # Adjust format as necessary
-
-                        # Format the date as dd/mm/yyyy to check against skip dates
+                        timestamp = row[0]
+                        e_field_avg = float(row[2])
+                        timestamp_obj = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
                         formatted_date = timestamp_obj.strftime('%d/%m/%Y')
-
-                        # Skip files with dates in the skip list
                         if formatted_date in dates_to_skip:
                             continue
-
-                        # Extract the day of the week and the hour part of the timestamp
-                        day_name = timestamp_obj.strftime('%A')  # Get day name (e.g., 'Monday')
+                        day_name = timestamp_obj.strftime('%A')
                         hour = timestamp_obj.hour
-
-                        # Take the absolute value of the E-field average
                         e_field_avg_abs = abs(e_field_avg)
-
-                        # Append the value to the appropriate day and hour
                         daily_data[day_name][hour].append(e_field_avg_abs)
-
                     except ValueError:
-                        # Skip rows that might have invalid or missing data
                         continue
-
-            # Increment the counter for valid files
             i += 1
 
-    # Calculate the average for each hour of each day
     print(f'{i} valid files processed')
-    hourly_avg_per_day = {}
-    for day, hours in daily_data.items():
-        hourly_avg_per_day[day] = []
+
+    days_order = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+    full_week_data = []
+
+    for day in days_order:
         for hour in range(24):
-            values = hours[hour]
-            if values:
-                hourly_avg_per_day[day].append(sum(values) / len(values))  # Calculate average for the hour
-            else:
-                hourly_avg_per_day[day].append(0)  # If no data, append 0
+            values = daily_data[day][hour]
+            avg = sum(values) / len(values) if values else 0
+            full_week_data.append(avg)
 
     # Plotting
-    cmap = plt.cm.get_cmap('tab10')  # Color map for different days
-    days_order = [ "Sunday","Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+    fig, ax1 = plt.subplots(figsize=(14, 6))
+    cmap = plt.cm.get_cmap('tab10')
 
-    # Plot the averages for each day of the week
-    plt.figure(figsize=(12, 6))
-    for idx, day in enumerate(days_order):
-        if day in hourly_avg_per_day:  # Only plot days that have data
-            color = cmap(idx / 7)
-            plt.plot(range(24), hourly_avg_per_day[day], label=day, color=color)
+    for i in range(7):
+        start = i * 24
+        end = (i + 1) * 24
+        if i > 0:
+            start -= 1
+        ax1.plot(range(start, end), full_week_data[start:end], color=cmap(i), label=days_order[i])
 
-    plt.title('Daily Averages PG value Over Time')
-    plt.xlabel('Hour of the Day [LT]')
-    plt.ylabel('Average PG Value [V/m]')
-    plt.xticks(range(24))
-    plt.legend(title="Days of the Week")
-    plt.grid(True)
+    # Primary x-axis: day names at midpoint
+    ax1.set_xticks([i * 24 + 12 for i in range(7)])
+    ax1.set_xticklabels(days_order)
+    ax1.set_xlabel("Day of the Week")
+    ax1.set_ylabel("Average PG Value [V/m]")
+    ax1.set_title("Average PG Value Over the Week (Continuous Line, Day-Colored)")
+    ax1.grid(True)
+    ax1.legend(title="Days")
+
+    # Secondary x-axis: hour ranges (0-24, 24-48, ...)
+    ax2 = ax1.twiny()
+    hour_positions = list(range(0, 168 + 1, 24))  # 0 to 168 hours, every 24
+    hour_labels = [f"{h}-{h+24}" for h in hour_positions[:-1]]
+    ax2.set_xticks([h + 12 for h in hour_positions[:-1]])  # center align labels
+    ax2.set_xticklabels(hour_labels)
+    ax2.set_xlim(ax1.get_xlim())
+    ax2.set_xlabel("Hour Range")
+
     plt.tight_layout()
     plt.show()
 
-# Call the function to process the data and plot the graph
 process_and_plot_data(directory_path)

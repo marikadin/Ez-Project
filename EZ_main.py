@@ -72,24 +72,32 @@ def process_and_plot_data(directory):
             i += 1
 
     # Calculate the average for each hour
+    # Calculate the average for each hour
     print(f'{i} valid files processed')
     hourly_avg = {}
     for hour, data in hourly_data.items():
         if data["count"] > 0:
             hourly_avg[hour] = data["sum"] / data["count"]
 
-    # Plot the results
+    # Plot the results in LT and UT (shifted)
     if hourly_avg:
         hours = sorted(hourly_avg.keys())
-        averages = [hourly_avg[hour] for hour in hours]
+        lt_averages = [hourly_avg[hour] for hour in hours]
+
+        # Shift 2 hours back for UT, wrapping around with modulo 24
+        ut_hourly_avg = {(hour - 2) % 24: avg for hour, avg in hourly_avg.items()}
+        ut_hours = sorted(ut_hourly_avg.keys())
+        ut_averages = [ut_hourly_avg[hour] for hour in ut_hours]
 
         plt.figure(figsize=(10, 6))
-        plt.plot(hours, averages, marker='o', linestyle='-', color='b')
+        plt.plot(hours, lt_averages, marker='o', linestyle='--', color='b', label='Local Time (LT)')
+        plt.plot(ut_hours, ut_averages, marker='s', linestyle='-', color='k', label='Universal Time (UT)')
         plt.title('Average PG values over time')
-        plt.xlabel('Time[LT]')
-        plt.ylabel('Average PG[V/m]')
-        plt.xticks(hours)  # Ensure all hours are labeled on the x-axis
+        plt.xlabel('Time')
+        plt.ylabel('Average PG [V/m]')
+        plt.xticks(range(0, 24))  # Show all 24 hours
         plt.grid(True)
+        plt.legend()
         plt.tight_layout()
         plt.show()
     else:
