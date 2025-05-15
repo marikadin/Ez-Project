@@ -7,7 +7,7 @@ import pandas as pd
 import matplotlib.cm as cm
 
 # ==== CONFIGURATION ====
-directory_path = "Ez Holon"
+directory_path = "PG"
 excel_file = "data.xlsx"
 usecols = [0, 3, 4]
 column_names = ['Date', 'NOx', 'PM2.5']
